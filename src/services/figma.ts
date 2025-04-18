@@ -1,4 +1,6 @@
 import fs from "fs";
+import https from "https"; // Import the https module
+import axios, { AxiosError } from "axios";
 import { parseFigmaResponse, SimplifiedDesign } from "./simplify-node-response.js";
 import type {
   GetImagesResponse,
@@ -46,35 +48,60 @@ export class FigmaService {
   }
 
   private async request<T>(endpoint: string): Promise<T> {
-    if (typeof fetch !== "function") {
-      throw new Error(
-        "The MCP server is being run in a Node.js environment where `fetch` is not available. You won't be able to access any data related to the Figma file.\n\nAs the coding AI assistant, PLEASE ABORT THE CURRENT REQUEST. No alternate approaches will work. Help the user fix this issue so you can proceed by letting them know that they need to run the MCP server with Node.js version 18 or higher.",
-      );
+    console.log('REQUESTING FIGMA API WITH AXIOS');
+
+    // Read the Netskope certificate bundle inside the request method
+    const netskopeCertPath = "/Library/Application Support/Netskope/STAgent/data/netskope-cert-bundle.pem";
+    let netskopeCa: Buffer | undefined;
+    try {
+      netskopeCa = fs.readFileSync(netskopeCertPath);
+      Logger.log(`Successfully loaded Netskope certificate from ${netskopeCertPath}`);
+    } catch (err) {
+      Logger.error(`Error reading Netskope certificate file at ${netskopeCertPath}:`, err);
+      // Log the error and proceed without the custom CA.
+      // Consider adding a more robust error handling strategy here.
     }
+
     try {
       Logger.log(`Calling ${this.baseUrl}${endpoint}`);
-      const response = await fetch(`${this.baseUrl}${endpoint}`, {
+      const response = await axios.get<T>(`${this.baseUrl}${endpoint}`, {
         headers: {
           "X-Figma-Token": this.apiKey,
+          "Accept-Encoding": "gzip, deflate, br", // Common practice for axios
         },
+        // Configure httpsAgent to trust the Netskope CA bundle
+        httpsAgent: new https.Agent({
+          ca: netskopeCa, // Use the loaded certificate bundle
+          // rejectUnauthorized is true by default, no need to set it explicitly
+        }),
+        // Consider adding proxy/agent configuration here if needed for Netskope
+        // httpsAgent: new HttpsProxyAgent(process.env.HTTPS_PROXY, { ca: netskopeCa }), // Example with proxy agent + CA
+        // proxy: false, // If proxy needs to be explicitly disabled
       });
 
-      if (!response.ok) {
-        throw {
-          status: response.status,
-          err: response.statusText || "Unknown error",
-        } as FigmaError;
-      }
-
-      return await response.json();
+      return response.data;
     } catch (error) {
-      if ((error as FigmaError).status) {
-        throw error;
+      const axiosError = error as AxiosError;
+      if (axiosError.response) {
+        // The request was made and the server responded with a status code
+        // that falls out of the range of 2xx
+        console.error("Figma API Error Status:", axiosError.response.status);
+        console.error("Figma API Error Data:", axiosError.response.data);
+        throw {
+          status: axiosError.response.status,
+          err: axiosError.response.statusText || JSON.stringify(axiosError.response.data) || "Unknown API error",
+        } as FigmaError;
+      } else if (axiosError.request) {
+        // The request was made but no response was received
+        console.error("Figma API No Response:", axiosError.request);
+        throw new Error(`Failed to make request to Figma API: No response received. ${axiosError.message}`);
+      } else {
+        // Something happened in setting up the request that triggered an Error
+        console.error("Figma API Request Setup Error:", axiosError.message);
+        throw new Error(`Failed to make request to Figma API: ${axiosError.message}`);
       }
-      if (error instanceof Error) {
-        throw new Error(`Failed to make request to Figma API: ${error.message}`);
-      }
-      throw new Error(`Failed to make request to Figma API: ${error}`);
+      // Fallback generic error
+      // throw new Error(`Failed to make request to Figma API: ${error}`);
     }
   }
 

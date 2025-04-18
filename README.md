@@ -88,6 +88,49 @@ The `figma-developer-mcp` server can be configured by adding the following to yo
 }
 ```
 
+### Using SSE (HTTP Mode from Source)
+
+If you want to run the server directly from the source code (e.g., for development or customization), you can connect via Server-Sent Events (SSE) over HTTP.
+
+1.  **Clone the repository:**
+    ```bash
+    git clone https://github.com/mmruesch12/Figma-Context-MCP.git
+    cd Figma-Context-MCP
+    ```
+2.  **Install dependencies:**
+    ```bash
+    npm install 
+    # or pnpm install / yarn install
+    ```
+3.  **Create environment file:** Create a file named `.env` in the root of the cloned repository and add your Figma API key:
+    ```dotenv
+    # .env
+    FIGMA_API_KEY=YOUR-KEY
+    ```
+    *(You can also set the `PORT` variable here if you want to use a different port than the default `3333`)*
+4.  **Start the development server:** This command starts the server in HTTP mode using `ts-node-dev` for automatic restarts on code changes.
+    ```bash
+    npm run dev
+    ```
+    The server will listen on `http://localhost:3333` by default.
+
+5.  **Configure your MCP client:** Add the following configuration to your MCP settings file. This tells the client to connect to the running development server via its URL.
+
+```json
+{
+  "mcpServers": {
+    "Framelink Figma MCP (SSE)": {
+      "url": "http://localhost:3333",
+      "env": {
+        "FIGMA_API_KEY": "YOUR-KEY" 
+      }
+    }
+  }
+}
+```
+
+> **Note:** When running the server via `npm run dev`, it reads the `FIGMA_API_KEY` from the `.env` file you created. The `env` block in the MCP client configuration below is primarily for the *client* to potentially authenticate with the server if needed, though in this setup, the server doesn't strictly require client-side key authentication as it already has the key from `.env`. However, including it can be good practice for consistency. Ensure `YOUR-KEY` matches the one in your `.env` file.
+
 If you need more information on how to configure the Framelink Figma MCP server, see the [Framelink docs](https://www.framelink.ai/docs/quickstart?utm_source=github&utm_medium=referral&utm_campaign=readme).
 
 ## Star History
